@@ -69,17 +69,23 @@ if not GOOGLE_API_KEY:
     print("⚠️ WARNING: GOOGLE_API_KEY not found in environment variables")
 
 # ------------------ Database Setup ------------------
-SessionLocal = None
 Base = declarative_base()
+engine = None
+SessionLocal = None
 
-if POSTGRES_URI:
-    db_uri = POSTGRES_URI
-    engine = create_engine(db_uri, future=True)
-else:
-    db_uri = "sqlite:///./dev.db"
-    engine = create_engine(db_uri, future=True, connect_args={"check_same_thread": False})
-
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+def get_db():
+    global engine, SessionLocal
+    if not SessionLocal:
+        if POSTGRES_URI:
+            db_uri = POSTGRES_URI
+            engine = create_engine(db_uri, future=True, pool_pre_ping=True)
+        else:
+            db_uri = "sqlite:///./dev.db"
+            engine = create_engine(db_uri, future=True, connect_args={"check_same_thread": False}, pool_pre_ping=True)
+        
+        SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+        Base.metadata.create_all(bind=engine)
+    return SessionLocal()
 
 class User(Base):
     __tablename__ = "users"
@@ -273,8 +279,14 @@ User.preferences = relationship("UserPreferences", back_populates="user", uselis
 Base.metadata.create_all(bind=engine)
 
 # ------------------ Gemini Setup ------------------
-genai.configure(api_key=GOOGLE_API_KEY)
-model = genai.GenerativeModel("gemini-2.5-flash")
+def get_model():
+    if not hasattr(get_model, "_model"):
+        genai.configure(api_key=GOOGLE_API_KEY)
+        get_model._model = genai.GenerativeModel("gemini-2.5-flash")
+    return get_model._model
+
+# Lazy load model
+model = None
 
 # ------------------ Pattern Learning Functions ------------------
 import json
@@ -1098,7 +1110,7 @@ def get_rejection_reasons():
 
 @app.post("/register")
 def register(user: UserCreate):
-    db = SessionLocal()
+    db = get_db()
     try:
         # Check if username already exists
         if db.query(User).filter(User.username == user.username).first():

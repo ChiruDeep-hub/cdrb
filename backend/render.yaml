@@ -4,7 +4,7 @@ services:
     env: python
     runtime: python3.11
     buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT --timeout-keep-alive 75 --workers 1 --limit-max-requests 2000
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.0
