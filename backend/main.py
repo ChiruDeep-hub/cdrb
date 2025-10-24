@@ -52,7 +52,7 @@ ADMIN_PASSWORD_HASH = "$2b$12$DlvXYnlNYpbq.zEgdnLhK.rFNNtJC5FzsbvbvIiZKyqnckQKsq
 # ------------------ Load Environment ------------------
 load_dotenv(os.path.join(os.getcwd(), ".env_sep", "creds.env"))
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
-POSTGRES_URI = os.getenv("POSTGRES_URI")
+POSTGRES_URI = os.getenv("POSTGRES_URI","postgresql://postgres:root123@localhost:5432/crvkn")
 SECRET_KEY = os.getenv("SECRET_KEY", str(uuid.uuid4()))
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
