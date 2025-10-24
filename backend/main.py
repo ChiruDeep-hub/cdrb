@@ -69,27 +69,17 @@ if not GOOGLE_API_KEY:
     print("⚠️ WARNING: GOOGLE_API_KEY not found in environment variables")
 
 # ------------------ Database Setup ------------------
-Base = declarative_base()
-engine = None
 SessionLocal = None
+Base = declarative_base()
 
-def get_db():
-    global engine, SessionLocal
-    # Read POSTGRES_URI at runtime so environment updates are picked up without
-    # requiring code to be changed. This also helps deployments where env vars
-    # may be updated via the Render dashboard.
-    if not SessionLocal:
-        postgres_uri = os.getenv("POSTGRES_URI")
-        if postgres_uri:
-            db_uri = postgres_uri
-            engine = create_engine(db_uri, future=True, pool_pre_ping=True)
-        else:
-            db_uri = "sqlite:///./dev.db"
-            engine = create_engine(db_uri, future=True, connect_args={"check_same_thread": False}, pool_pre_ping=True)
+if POSTGRES_URI:
+    db_uri = POSTGRES_URI
+    engine = create_engine(db_uri, future=True)
+else:
+    db_uri = "sqlite:///./dev.db"
+    engine = create_engine(db_uri, future=True, connect_args={"check_same_thread": False})
 
-        SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-        Base.metadata.create_all(bind=engine)
-    return SessionLocal()
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 class User(Base):
     __tablename__ = "users"
@@ -280,18 +270,11 @@ class UserPreferences(Base):
 # Update User model to include preferences relationship
 User.preferences = relationship("UserPreferences", back_populates="user", uselist=False)
 
-# Database tables will be created on first use by `get_db()` to avoid
-# initializing the engine at import time in the Render runtime.
+Base.metadata.create_all(bind=engine)
 
 # ------------------ Gemini Setup ------------------
-def get_model():
-    if not hasattr(get_model, "_model"):
-        genai.configure(api_key=GOOGLE_API_KEY)
-        get_model._model = genai.GenerativeModel("gemini-2.5-flash")
-    return get_model._model
-
-# Lazy load model
-model = None
+genai.configure(api_key=GOOGLE_API_KEY)
+model = genai.GenerativeModel("gemini-2.5-flash")
 
 # ------------------ Pattern Learning Functions ------------------
 import json
@@ -748,6 +731,7 @@ app.add_middleware(
         "http://127.0.0.1:3001",
         "http://localhost:8000",
         "http://127.0.0.1:8000",
+        "https://cdrb.vercel.app",
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -1115,56 +1099,47 @@ def get_rejection_reasons():
 
 @app.post("/register")
 def register(user: UserCreate):
-    # Use a safe debug wrapper so we can see the underlying error during early troubleshooting.
-    db = get_db()
+    db = SessionLocal()
     try:
-        # Validate input
+        # Check if username already exists
         if db.query(User).filter(User.username == user.username).first():
             raise HTTPException(status_code=400, detail="Username already registered")
-
+        
+        # Check if email already exists
         if db.query(User).filter(User.email == user.email).first():
             raise HTTPException(status_code=400, detail="Email already registered")
-
+        
+        # Basic email validation
         if "@" not in user.email or "." not in user.email:
             raise HTTPException(status_code=400, detail="Invalid email format")
-
-        # Create user
+        
+        # Generate OTP and set expiration (10 minutes)
         otp = generate_otp()
         otp_expires_at = datetime.utcnow() + timedelta(minutes=10)
+        
+        # Create user (not verified yet)
         hashed_password = get_password_hash(user.password)
         new_user = User(
-            username=user.username,
+            username=user.username, 
             email=user.email,
             hashed_password=hashed_password,
             otp_code=otp,
             otp_expires_at=otp_expires_at,
-            is_verified=False,
+            is_verified=False
         )
         db.add(new_user)
         db.commit()
         db.refresh(new_user)
-
+        
+        # Send OTP email
         email_sent = send_otp_email(user.email, otp)
+        
         if email_sent:
             return {"message": "Registration successful! Please check your email for the verification code.", "user_id": new_user.id}
         else:
             return {"message": "Registration successful! Email service unavailable - contact admin for verification.", "user_id": new_user.id}
-
-    except HTTPException:
-        # Re-raise HTTPExceptions so FastAPI handles them normally
-        raise
-    except Exception as e:
-        # Print full traceback to server logs for diagnosis, but return a concise, safe message to client
-        import traceback as _tb
-        _tb.print_exc()
-        # Return limited error info to avoid leaking secrets; include exception type and short message
-        err_msg = f"{type(e).__name__}: {str(e)[:300]}"
-        return JSONResponse(status_code=500, content={"detail": "Internal server error (debug)", "error": err_msg})
     finally:
-        try:
-            db.close()
-        except Exception:
-            pass
+        db.close()
 
 @app.post("/verify-otp")
 def verify_otp(otp_request: OTPVerify):
