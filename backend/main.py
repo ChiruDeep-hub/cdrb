@@ -729,13 +729,11 @@ async def global_exception_handler(request, exc):
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "http://localhost:3001",
-        "http://127.0.0.1:3001",
-        "http://localhost:8000",
-        "http://127.0.0.1:8000",
-        "https://cdrb.vercel.app",
+    "http://localhost:3000",          # Local frontend development
+    "http://localhost:8000",          # Local backend testing
+    "https://cdrb.vercel.app",        # <--- YOUR VERCEL FRONTEND DOMAIN
+    "https://cdrb-backend.onrender.com", # <--- YOUR RENDER BACKEND DOMAIN
+    "https://*.vercel.app",
     ],
     allow_credentials=True,
     allow_methods=["*"],
