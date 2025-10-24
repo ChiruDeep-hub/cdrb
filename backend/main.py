@@ -75,14 +75,18 @@ SessionLocal = None
 
 def get_db():
     global engine, SessionLocal
+    # Read POSTGRES_URI at runtime so environment updates are picked up without
+    # requiring code to be changed. This also helps deployments where env vars
+    # may be updated via the Render dashboard.
     if not SessionLocal:
-        if POSTGRES_URI:
-            db_uri = POSTGRES_URI
+        postgres_uri = os.getenv("POSTGRES_URI")
+        if postgres_uri:
+            db_uri = postgres_uri
             engine = create_engine(db_uri, future=True, pool_pre_ping=True)
         else:
             db_uri = "sqlite:///./dev.db"
             engine = create_engine(db_uri, future=True, connect_args={"check_same_thread": False}, pool_pre_ping=True)
-        
+
         SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
         Base.metadata.create_all(bind=engine)
     return SessionLocal()
