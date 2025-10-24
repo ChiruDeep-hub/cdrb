@@ -276,7 +276,8 @@ class UserPreferences(Base):
 # Update User model to include preferences relationship
 User.preferences = relationship("UserPreferences", back_populates="user", uselist=False)
 
-Base.metadata.create_all(bind=engine)
+# Database tables will be created on first use by `get_db()` to avoid
+# initializing the engine at import time in the Render runtime.
 
 # ------------------ Gemini Setup ------------------
 def get_model():
