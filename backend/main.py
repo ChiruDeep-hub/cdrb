@@ -1111,47 +1111,56 @@ def get_rejection_reasons():
 
 @app.post("/register")
 def register(user: UserCreate):
+    # Use a safe debug wrapper so we can see the underlying error during early troubleshooting.
     db = get_db()
     try:
-        # Check if username already exists
+        # Validate input
         if db.query(User).filter(User.username == user.username).first():
             raise HTTPException(status_code=400, detail="Username already registered")
-        
-        # Check if email already exists
+
         if db.query(User).filter(User.email == user.email).first():
             raise HTTPException(status_code=400, detail="Email already registered")
-        
-        # Basic email validation
+
         if "@" not in user.email or "." not in user.email:
             raise HTTPException(status_code=400, detail="Invalid email format")
-        
-        # Generate OTP and set expiration (10 minutes)
+
+        # Create user
         otp = generate_otp()
         otp_expires_at = datetime.utcnow() + timedelta(minutes=10)
-        
-        # Create user (not verified yet)
         hashed_password = get_password_hash(user.password)
         new_user = User(
-            username=user.username, 
+            username=user.username,
             email=user.email,
             hashed_password=hashed_password,
             otp_code=otp,
             otp_expires_at=otp_expires_at,
-            is_verified=False
+            is_verified=False,
         )
         db.add(new_user)
         db.commit()
         db.refresh(new_user)
-        
-        # Send OTP email
+
         email_sent = send_otp_email(user.email, otp)
-        
         if email_sent:
             return {"message": "Registration successful! Please check your email for the verification code.", "user_id": new_user.id}
         else:
             return {"message": "Registration successful! Email service unavailable - contact admin for verification.", "user_id": new_user.id}
+
+    except HTTPException:
+        # Re-raise HTTPExceptions so FastAPI handles them normally
+        raise
+    except Exception as e:
+        # Print full traceback to server logs for diagnosis, but return a concise, safe message to client
+        import traceback as _tb
+        _tb.print_exc()
+        # Return limited error info to avoid leaking secrets; include exception type and short message
+        err_msg = f"{type(e).__name__}: {str(e)[:300]}"
+        return JSONResponse(status_code=500, content={"detail": "Internal server error (debug)", "error": err_msg})
     finally:
-        db.close()
+        try:
+            db.close()
+        except Exception:
+            pass
 
 @app.post("/verify-otp")
 def verify_otp(otp_request: OTPVerify):
