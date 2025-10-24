@@ -13,7 +13,7 @@ export default API;
 // src/api.js
 import axios from "axios";
 
-const BASE_URL = "http://localhost:8000";
+const BASE_URL = "https://cdrb-backend.onrender.com";
 
 const API = axios.create({
   baseURL: BASE_URL,
