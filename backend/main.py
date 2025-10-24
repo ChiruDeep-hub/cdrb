@@ -274,7 +274,11 @@ Base.metadata.create_all(bind=engine)
 
 # ------------------ Gemini Setup ------------------
 genai.configure(api_key=GOOGLE_API_KEY)
-model = genai.GenerativeModel("gemini-pro")
+try:
+    model = genai.GenerativeModel('gemini-pro')
+except AttributeError:
+    # Fallback for older versions of the library
+    model = genai.get_model('gemini-pro')
 
 # ------------------ Pattern Learning Functions ------------------
 import json
